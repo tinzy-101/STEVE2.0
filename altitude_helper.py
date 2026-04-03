@@ -258,6 +258,16 @@ def plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_yknf, s
 
     return rgb_yknf_adjusted, rgb_fsmi_adjusted
 
+def enhance_fences_clahe(channel_data):
+    # Create a CLAHE object (clipLimit 2-4 is good, tileGridSize 8x8 or 16x16)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    return clahe.apply(channel_data.astype(np.uint8))
+
+
+
+
+
+
 
 def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_yknf, site_name_fsmi, yknf_lat, yknf_lon, fsmi_lat, fsmi_lon, h_target):
     ''' 
@@ -297,25 +307,36 @@ def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_y
     time_str = time_obj.strftime("%b. %d, %Y %H:%M:%S UT")
         
     # # contrast adjustment: alpha=contrast, beta=brightness
-    # alpha = 5
-    # beta = 5
+    alpha = 6
+    beta = 5
     rgb_yknf = np.stack([R_yknf, G_yknf, B_yknf], axis=-1)  # shape: (x, y, 3)
     rgb_fsmi = np.stack([R_fsmi, G_fsmi, B_fsmi], axis=-1)  # shape: (x, y, 3)
-    
-    # rgb_yknf_adjusted = cv2.convertScaleAbs(rgb_yknf, alpha=alpha, beta=beta)
-    # rgb_fsmi_adjusted = cv2.convertScaleAbs(rgb_fsmi, alpha=alpha, beta=beta)
 
-    alpha_green = 2.0  # higher contrast for Green
-    beta_green = 1.0  # brightness for Green
+    #------ old manually adjusitng alpha and beta-----------#
+    rgb_yknf_adjusted = cv2.convertScaleAbs(rgb_yknf, alpha=alpha, beta=beta)
+    rgb_fsmi_adjusted = cv2.convertScaleAbs(rgb_fsmi, alpha=alpha, beta=beta)
+
+    rgb_yknf = rgb_yknf_adjusted
+    rgb_fsmi = rgb_fsmi_adjusted
+    print("AAAAAAAAA")
+
+    # alpha_green = 2.0  # higher contrast for Green
+    # beta_green = 1.0  # brightness for Green
     
-    # apply adjustment ONLY to index 1 (green)
-    rgb_yknf[:, :, 1] = cv2.convertScaleAbs(rgb_yknf[:, :, 1], alpha=alpha_green, beta=beta_green)
-    rgb_fsmi[:, :, 1] = cv2.convertScaleAbs(rgb_fsmi[:, :, 1], alpha=alpha_green, beta=beta_green)
+    # # apply adjustment ONLY to index 1 (green)
+    # rgb_yknf[:, :, 1] = cv2.convertScaleAbs(rgb_yknf[:, :, 1], alpha=alpha_green, beta=beta_green)
+    # rgb_fsmi[:, :, 1] = cv2.convertScaleAbs(rgb_fsmi[:, :, 1], alpha=alpha_green, beta=beta_green)
 
     # decrease brightness and contast for ONLY green
     # rgb_yknf[:, :, [0, 2]] = cv2.convertScaleAbs(rgb_yknf[:, :, [0, 2]], alpha=1.5, beta=0)
     # rgb_fsmi[:, :, [0, 2]] = cv2.convertScaleAbs(rgb_fsmi[:, :, [0, 2]], alpha=1.5, beta=0)
 
+
+    #------- new ----------#
+    # Inside your function:
+    # rgb_yknf[:, :, 1] = enhance_fences_clahe(rgb_yknf[:, :, 1])
+    # rgb_fsmi[:, :, 1] = enhance_fences_clahe(rgb_fsmi[:, :, 1])
+    
     # baseline yknf 110 plot limits, scale larger as projecting to larger altitudes
     # x_plot_min = 221.94 - h_target / 100000 * 25 
     # x_plot_max = 276.13 + h_target / 100000 * 25
@@ -329,6 +350,11 @@ def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_y
     # yknf projected
     fig1, ax1 = plt.subplots(figsize=(8,8))
     scat1 = ax1.scatter(yknf_lon.flatten(),yknf_lat.flatten(),c=rgb_yknf.reshape(-1, 3)/256,s=1)
+    ax1.axvline(x=247.2, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axvline(x=248.8, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axvline(x=247.69, color='y', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axhline(y=60.0, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axhline(y=60.9, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
     plt.xlim((x_plot_min, x_plot_max))
     plt.ylim((y_plot_min, y_plot_max))
     ax1.set_ylabel("Latitude (deg)")
@@ -339,6 +365,11 @@ def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_y
     # fsmi projected
     fig2, ax2 = plt.subplots(figsize=(8,8))
     scat2 = ax2.scatter(fsmi_lon.flatten(),fsmi_lat.flatten(),c=rgb_fsmi.reshape(-1, 3)/256,s=1)
+    ax2.axvline(x=246.5, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axvline(x=248, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axvline(x=247.69, color='y', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axhline(y=60.85, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axhline(y=61.5, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
     plt.xlim((x_plot_min, x_plot_max))
     plt.ylim((y_plot_min, y_plot_max))
     ax2.set_ylabel("Latitude (deg)")
@@ -348,7 +379,7 @@ def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_y
     
     # 110km  overlaid --> 
     plt.figure(figsize=(8,8))
-    plt.scatter(yknf_lon.flatten(),yknf_lat.flatten(),c=rgb_yknf.reshape(-1, 3)/256,s=1, alpha=0.15) #0.15
+    plt.scatter(yknf_lon.flatten(),yknf_lat.flatten(),c=rgb_yknf.reshape(-1, 3)/256,s=1, alpha=0.2) #0.15
     plt.scatter(fsmi_lon.flatten(),fsmi_lat.flatten(),c=rgb_fsmi.reshape(-1, 3)/256,s=1, alpha=0.08) #0.08
     plt.xlabel("Longitude (deg)")
     plt.ylabel("Latitude (deg)")
@@ -1068,14 +1099,14 @@ def plot_lon_slice_bounding_box(lat_proj, lon_proj,
     plt.figure(figsize=(8,8))
     plt.scatter(lon_proj.flatten(),lat_proj.flatten(),c=rgb.reshape(-1, 3)/255.0,s=1, alpha=1) #0.15
     if np.any(mask):
-        plt.plot(lon_s[mask], lat_s[mask], marker=".", linestyle="-", color='yellow', linewidth=2, label='Slice') # NEED TO FIX THIS BUG, SWITCHED LAT/LON??
+        plt.plot(lon_s[mask], lat_s[mask], marker=".", markersize=0.5, linestyle="-", color='yellow', linewidth=0.5, label='Slice') # NEED TO FIX THIS BUG, SWITCHED LAT/LON??
     else:
         print("Warning: reproj_slice is entirely NaNs!")
     #plt.plot(reproj_lon_slice, reproj_lat_slice, marker="o", linestyle="-", color='green') 
-    plt.plot(reproj_left_lon, reproj_left_lat, marker=".", linestyle="-", color='red')
-    plt.plot(reproj_right_lon, reproj_right_lat, marker=".", linestyle="-", color='red')
-    plt.plot(reproj_top_lon, reproj_top_lat, marker=".", linestyle="-", color='red')
-    plt.plot(reproj_bottom_lon, reproj_bottom_lat, marker=".", linestyle="-", color='red')
+    plt.plot(reproj_left_lon, reproj_left_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_right_lon, reproj_right_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_top_lon, reproj_top_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_bottom_lon, reproj_bottom_lat, marker=".", markersize=0.5, linestyle="-", color='red')
     plt.xlabel("Longitude (deg)")
     plt.ylabel("Latitude (deg)")
     plt.title(f"Overlaid {new_h/1000}km Projection - timeidx{time_index}", pad=30)
@@ -1231,8 +1262,34 @@ def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
 
 
 
+''' plot resamplied points int he bounding box'''
+def plot_resampled_bounding_box(lat_proj, lon_proj, rgb, time_index, site_name,
+                                 all_resampled_lats, all_resampled_lons, # resampled points inside the bounding boxes 
+                                 reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
+                                 reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon,
+                                 h_target):
+    x_plot_min = 215
+    x_plot_max = 275
+    y_plot_min = 45
+    y_plot_max = 80
 
-''' fixing to get consistent longitude array size --> pick same number of longitudes to interpolate over AND also added fixed the projecting longitudes + bounding box from 2-26'''
+    plt.figure(figsize=(8,8))
+    plt.scatter(lon_proj.flatten(),lat_proj.flatten(),c=rgb.reshape(-1, 3)/256,s=1, alpha=1) 
+    plt.scatter(all_resampled_lons, all_resampled_lats, color='green', s=0.5, alpha=1, label='Resampled Grid Points')
+    plt.plot(reproj_left_lon, reproj_left_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_right_lon, reproj_right_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_top_lon, reproj_top_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_bottom_lon, reproj_bottom_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.xlabel("Longitude (deg)")
+    plt.ylabel("Latitude (deg)")
+    plt.title(f"{site_name} Overlaid {h_target/1000}km Projection - {time_index}", pad=30)
+    plt.xlim((x_plot_min, x_plot_max))
+    plt.ylim((y_plot_min, y_plot_max))
+    plt.show()
+
+
+''' fixing to get consistent longitude array size --> pick same number of longitudes to interpolate over AND also added fixed the projecting longitudes + bounding box from 2-26
+also fixed to resample within the bounding box in order to get the same number of points per '''
 def fixed_line_interpolate(lat_proj, lon_proj, rgb, 
                              lat_min_box, lat_max_box, 
                              lon_min_box, lon_max_box,
@@ -1240,7 +1297,7 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
                              site_name, time_index, 
                              og_h, new_h,
                              global_lon_arr, global_lat_arr):
-
+ 
     """
     Goal:
     Given the inputted lat_proj, lon_proj arrays (the latitude and longitude projected to height new_h). We want to sample along a line "line"
@@ -1300,7 +1357,7 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
  #   if og_h != new_h: --> maybe need to differentiate this, bc if projecting to 130km then it will just be a line 
     # reproject the latitude slices and the bounding box for each projection --> already looping through all the lon slices here
     reproj_lat_arr_dict, reproj_lon_arr_dict, reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon = project_lat_slices_and_box(global_lat_arr, global_lon_arr, # these are in degrees
-                                                                                                                                                                                                                           lat_max_box, lat_min_box, lon_max_box, lon_min_box, # also degrees
+                                                                                                                                                                                                                              lat_max_box, lat_min_box, lon_max_box, lon_min_box, # also degrees
                                                                                                                                                                                                                            lat_camera, lon_camera, og_h, new_h)
     # LEAVE THIS WHITESPACE ALONE
     original_lon_arr = reproj_lat_arr_dict.keys() # these keys should be the same as take from reproj_lon_arr_dict, and in degrees
@@ -1315,6 +1372,22 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
     box_lons = np.concatenate([reproj_top_lon, reproj_right_lon, reproj_bottom_lon, reproj_left_lon])
     vertices = np.column_stack((box_lats, box_lons))
     box_boundary_path = Path(vertices)
+
+    # find the maximum number of raw points in any slice within the bounding box 
+    # ensure that will have a "max resolution" for projection to whatever altitude, ie dont use the same number of points for each altitude, rather same number of points for each lon slice at one particular altitude
+    raw_counts = []
+    for lat_slice, lon_slice in zip(reproj_lat_slice_arr, reproj_lon_slice_arr):
+        #  simulates the mask to see how many points usually survive
+        locs = np.column_stack((lat_slice, lon_slice))
+        mask = box_boundary_path.contains_points(locs)
+        raw_counts.append(np.sum(mask))
+    
+    num_standard_samples = int(np.max(raw_counts)) if len(raw_counts) > 0 else 100
+
+    # allocate space for plotting resampling in the bounding box
+    all_resampled_lats = []
+    all_resampled_lons = []
+    all_resampled_intensities = []
 
     # preallocate
     num_slices = len(original_lon_arr)
@@ -1357,7 +1430,7 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
             R_intensity_profile = np.full(len(interp_locations), np.nan)  # or 0
 
         valid_interp_count = np.sum(np.isfinite(R_intensity_profile))
-        print(f"Lon {original_lon}: Points successfully interpolated: {valid_interp_count}")
+        #print(f"Lon {original_lon}: Points successfully interpolated: {valid_interp_count}")
 
         
         bounding_box_mask = box_boundary_path.contains_points(interp_locations) #expects (N,2) like griddata 
@@ -1366,22 +1439,69 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
         reproj_lat_slice_restricted = reproj_lat_slice[bounding_box_mask & R_nan_mask]
         reproj_lon_slice_restricted = reproj_lon_slice[bounding_box_mask & R_nan_mask]
 
-        points_in_box = np.sum(bounding_box_mask)
-        print(f"Lon {original_lon}: Points inside bounding box: {points_in_box}")
+        #------OLD logic without resampling to ensure same number of points along each lon slice inside the bounding box-----#
+        # points_in_box = np.sum(bounding_box_mask)
+        # print(f"Lon {original_lon}: Points inside bounding box: {points_in_box}")
 
-        if R_intensity_restricted.size==0:
-            #print("No points in this latitude range for this longitude slice.\n")
-            #continue # add nan instead of skipping all the longitude values
+        # if R_intensity_restricted.size==0:
+        #     #print("No points in this latitude range for this longitude slice.\n")
+        #     #continue # add nan instead of skipping all the longitude values
+        #     R_peak_lat_arr[idx] = np.nan
+        #     R_lon_arr[idx] = original_lon # still record the longitude, tho this is kinda meaningless bc it is the pre-projection lon
+        #     continue
+
+        # # along each latitude "line", pick out the peak latitude
+        # index_of_peak_intensity = np.argmax(R_intensity_restricted)
+        # peak_latitude = reproj_lat_slice_restricted[index_of_peak_intensity]
+        # lon_of_peak_lat = reproj_lon_slice_restricted[index_of_peak_intensity]
+        # R_peak_lat_arr[idx] = peak_latitude
+        # R_lon_arr[idx] = lon_of_peak_lat
+
+        # -----NEW logic, resample to max num points within each bounding box--------#        
+        if R_intensity_restricted.size > 1:
+            # create a normalized grid between the min and max latitude of THIS slice
+            standard_lat_grid = np.linspace(reproj_lat_slice_restricted.min(), 
+                                            reproj_lat_slice_restricted.max(), 
+                                            num_standard_samples)
+
+            print("standard lat grid:")
+            print(standard_lat_grid)
+
+            standard_lon_grid = np.interp(standard_lat_grid, 
+                                          reproj_lat_slice_restricted, 
+                                          reproj_lon_slice_restricted)
+            
+            # interpolate the intensity onto this standard grid
+            # np.interp(x_new, x_original, y_original)
+            R_intensity_resampled = np.interp(standard_lat_grid, 
+                                              reproj_lat_slice_restricted, 
+                                              R_intensity_restricted)
+
+            all_resampled_lats.extend(standard_lat_grid)
+            all_resampled_lons.extend(standard_lon_grid)
+            all_resampled_intensities.extend(R_intensity_resampled)
+            
+            
+            # pick our peak from the resampled data
+            idx_peak = np.argmax(R_intensity_resampled)
+            R_peak_lat_arr[idx] = standard_lat_grid[idx_peak]
+            
+            # also resample longitude to find the exact peak longitude coordinate
+            standard_lon_grid = np.interp(standard_lat_grid, 
+                                          reproj_lat_slice_restricted, 
+                                          reproj_lon_slice_restricted)
+            R_lon_arr[idx] = standard_lon_grid[idx_peak]
+        else:
+            # set to NaN if the slice doesn't intersect the aurora box
             R_peak_lat_arr[idx] = np.nan
-            R_lon_arr[idx] = original_lon # still record the longitude, tho this is kinda meaningless bc it is the pre-projection lon
-            continue
+            R_lon_arr[idx] = np.nan # Or original_lon, depending on your plotting needs
 
-        # along each latitude "line", pick out the peak latitude
-        index_of_peak_intensity = np.argmax(R_intensity_restricted)
-        peak_latitude = reproj_lat_slice_restricted[index_of_peak_intensity]
-        lon_of_peak_lat = reproj_lon_slice_restricted[index_of_peak_intensity]
-        R_peak_lat_arr[idx] = peak_latitude
-        R_lon_arr[idx] = lon_of_peak_lat
+    # plot the bounding box and the resampled points within 
+    plot_resampled_bounding_box(lat_proj, lon_proj, rgb, time_index, site_name,
+                                 all_resampled_lats, all_resampled_lons, # resampled points inside the bounding boxes 
+                                 reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
+                                 reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon,
+                                 new_h)
 
     # need to convert to np arrays
     R_peak_lat_arr = np.asarray(R_peak_lat_arr)
@@ -1427,8 +1547,18 @@ def new_compute_metrics_for_altitude(
     # fixed auroral box this is based on where the aurora falls for yknf and fsmi relative to our baseline of 150km
     # will be projecting this entire box up 
     # already have a fixed global_lon_arr and global_lat_arr that we are projecting up each time 
+    # lat_min_box, lat_max_box = 60.5, 66
+    # lon_min_box, lon_max_box = 240, 260
+
+    # fixed aurora box for 130km baseline 5 UTC 
     lat_min_box, lat_max_box = 60.5, 66
-    lon_min_box, lon_max_box = 240, 260
+    lon_min_box, lon_max_box = 242, 257
+
+    # fixed aurora box for 130km baseline 10 UTC 
+    # lat_min_box = 59.9
+    # lat_max_box = 61.6
+    # lon_min_box = 246.5
+    # lon_max_box = 249.3
 
     ssd_vals = [] # sum of squared differences
     sad_vals = [] # sum of absolute differences
@@ -1493,5 +1623,277 @@ def new_compute_metrics_for_altitude(
 
     return new_h, ssd_vals, sad_vals, avg_diffs, med_diffs, diffs
 
+
+''' interpolate only over the particular box where know location of the aurora to pick out peak intensities, green channel '''
+def fixed_line_interpolate_10UC(lat_proj, lon_proj, rgb, 
+                             lat_min_box, lat_max_box, # interpolate over only the particular box where the aurora is known to be 
+                             lon_min_box, lon_max_box,
+                             lat_camera, lon_camera,
+                             site_name, time_index, 
+                             og_h, new_h,
+                             lat_arr_interp, lon_arr_interp):  
+    """
+    Goal:
+    Given the inputted lat_proj, lon_proj arrays (the latitude and longitude projected to height new_h). We want to sample along a line "line"
+    in longitude, so over an array of lat,lon pairs. So we predefine our points of longitude over which to slice (relative to our "baseline" projection of 150km)
+    and get an 0.5-spaced latitude array that go across the latitude line for 150km (this is the true line since this is the baseline; any 
+    projections will curve the line a bit. The pairs here will look like (lat, cst lon) for each lon slice. 
+    Add a condition, if new_h is 150km, skip the reprojection, else reproject the latitude lines and the 4 edges of the bounding box. The
+    lat/lon min/max for the bounding box is now defined from the baseline 150km projection, and projected upwards, like the latitude slices. 
+    So, we will be getting the array of (lat,lon) pairs to interpolate over (interp_locations) from the reproj_lat_arr_dict and the 
+    reproj_lon_arr_dict (this defines around which line to interpolate). Now we need the points (lat,lon) and values (r channel) over which 
+    to interpolate. For the points, need a slice that is wide enough to capture the entire line (choose an arbitrary length for now, ie mask
+    the lat_proj and lon_proj arrays with threshold as long as within +-2 degrees of longitude, include it in the slice, maybe need to make 
+    this larger threshold depending on how much the longitude slice line curves when projected upwards (make plots for this and the bounding
+    box). For the values, need a slice of the r-channel array that follows where the lat/lons were zeroed, so just apply the same slice mask
+    to the r-channel array. Now, with the interp_locations, points, and values, can pass into graddata to interpolate, and it will spit out
+    The output of griddata/interpolation is an array same size as interp_locations, with each element the brightness of pixel
+    corresponding to each (lat,lon) pairs passed in as interp_locations. Now restrict this array to the projected bounding box (polygon).
+    Note that the bounding box is common across yknf and fsmi. 
+    
+    input:
+        lat_proj = 2D projected latitude arr (output of project_lat_lon())
+        lon_proj = 2D projected longitude arr (output of project_lat_lon())
+        rgb = 3D rgb array (output of mod_plot_lat_lon()) (these are the raw rgb values from the skymap, need to be matched to the projected new projected lat/lon
+        lat_min_box = restricted latitude for where aurora is in the frame (needed for finding max intensity) for 130km projection (lower bound for where we are getting the metric matrix)
+        lat_max_box = restricted latitude for where aurora is in the frame (needed for finding max intensity) for 130km projection (lower bound for where we are getting the metric matrix)
+        lon_min_box = restrict longitude for where aurora is in the frame (else will get meaningless peak intensities and screw up line of best fit)
+        lon_max_box = restrict longitude for where aurora is in the frame (else will get meaningless peak intensities and screw up line of best fit)
+        time_index = for naming purposes when plotting 
+        site_name = for naming purposes when plotting
+        og_h = 150,000 km the baseline for where we determined the best longitude slices and the best lat/lon box
+        new_h = new height we've projected to for the interpolation (what lat_proj and lon_proj were projected to) 
+
+    output:
+        R_peak_lat_arr = 1D arr of all the latitudes that the R-channel had peak altitude for, interpolated over the different longitudes + restricted to (lat_min_box, lat_max_box)
+        G_peak_lat_arr = 1D arr of all the latitudes that the G-channel had peak altitude for, interpolated over the different longitudes + restricted to (lat_min_box, lat_max_box)
+        B_peak_lat_arr = 1D arr of all the latitudes that the B-channel had peak altitude for, interpolated over the different longitudes + restricted to (lat_min_box, lat_max_box)
+        lon_arr = 1D arr of all the longitudes corresponding in idx to the peak latitude arrays (should be same length as the other 3 returned arrays)
+    """
+    # should be the same amount before and after reprojection! -->  need to pick a new bounding box for the lowest projection going to for the matrix (130km)
+    # in reality it's not really the "longitudes" we are interpolating at, except at 130km --> projecting upwards we are actually interpolating at a curve! 
+    print(f"\n====={new_h/1000.0}km PROJECTION=======")
+    print(f"Total {len(lon_arr_interp)} longitudes, and for each of these longitudes have {len(lat_arr_interp)} latitudes to interpolate\n")
+
+    # separate into G channel
+    R = rgb[:,:, 1]
+
+    # preallocate the sizes of the R_peak_lat_array and R_lon_arr (don't <continue> when run into issue with longitude, rather just add nan in that place)
+    R_peak_lat_arr = np.full(len(lon_arr_interp), np.nan)
+    R_lon_arr = np.full(len(lon_arr_interp), np.nan)
+
+ #   if og_h != new_h: --> maybe need to differentiate this, bc if projecting to 130km then it will just be a line 
+    # reproject the latitude slices and the bounding box for each projection --> already looping through all the lon slices here
+    reproj_lat_arr_dict, reproj_lon_arr_dict, reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon = project_lat_slices_and_box(lat_arr_interp, lon_arr_interp, # these are in degrees
+                                                                                                                                                                                                                              lat_max_box, lat_min_box, lon_max_box, lon_min_box, # also degrees
+                                                                                                                                                                                                                           lat_camera, lon_camera, og_h, new_h)
+    # LEAVE THIS WHITESPACE ALONE
+    original_lon_arr = reproj_lat_arr_dict.keys() # these keys should be the same as take from reproj_lon_arr_dict, and in degrees
+   # print(f"ORIGINAL LON ARR: {original_lon_arr}")
+    reproj_lon_slice_arr = reproj_lon_arr_dict.values() # this is array of arrays of longitude corresp. to each longitude of the original slices
+    reproj_lat_slice_arr = reproj_lat_arr_dict.values()
+   # print(f"{site_name}{new_h} reproj_lat_slice_arr len: {len(reproj_lat_slice_arr)}")
+  #  print(f"REPROJ LAT SLICE ARR: {reproj_lat_slice_arr}")
+
+    # define bounding box as a polygon, use for masking later 
+    box_lats = np.concatenate([reproj_top_lat, reproj_right_lat, reproj_bottom_lat, reproj_left_lat])
+    box_lons = np.concatenate([reproj_top_lon, reproj_right_lon, reproj_bottom_lon, reproj_left_lon])
+    vertices = np.column_stack((box_lats, box_lons))
+    box_boundary_path = Path(vertices)
+
+    # find the maximum number of raw points in any slice within the bounding box 
+    # ensure that will have a "max resolution" for projection to whatever altitude, ie dont use the same number of points for each altitude, rather same number of points for each lon slice at one particular altitude
+    raw_counts = []
+    for lat_slice, lon_slice in zip(reproj_lat_slice_arr, reproj_lon_slice_arr):
+        #  simulates the mask to see how many points usually survive
+        locs = np.column_stack((lat_slice, lon_slice))
+        mask = box_boundary_path.contains_points(locs)
+        raw_counts.append(np.sum(mask))
+    
+    num_standard_samples = int(np.max(raw_counts))# if len(raw_counts) > 0 else 100
+
+    # preallocate
+    num_slices = len(original_lon_arr)
+    R_peak_lat_arr = np.full(num_slices, np.nan)
+    R_lon_arr = np.full(num_slices, np.nan)# longitudes that correspond to the peak latitude 
+    for idx, (original_lon,reproj_lat_slice, reproj_lon_slice) in enumerate(zip(original_lon_arr, reproj_lat_slice_arr, reproj_lon_slice_arr)):
+
+        #plot the reprojected longitude slice line and the reprojected bounding box
+        # plot_lon_slice_bounding_box(lat_proj, lon_proj, 
+        #                             reproj_lat_slice, reproj_lon_slice, #slice
+        #                             reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
+        #                             reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon, #bounding box
+        #                             rgb, time_index, site_name, new_h)
+        lon_buffer = 10 + (new_h / 100000)
+        slice_mask = np.abs(lon_proj - original_lon) <= lon_buffer # might need to change this threshold depending on warp in projection--> had to change it to be a LOT larger! or else points not showing up 
+        lon_slice_points = lon_proj[slice_mask]
+        lat_slice_points = lat_proj[slice_mask]
+        R_slice_values = R[slice_mask] #already flattened 
+
+        # get lat and lon slices over which to interpolate in the right shape 
+        flattened_points = np.column_stack((lat_slice_points.flatten(), lon_slice_points.flatten())) # (N,2) pairs of (lat, lon)
+
+        # masks for NaNs in R, G, and B channels separately (basically remove the NaNs and infinite values if there is) --> where the projected lat, lon, or rgb values corresponding to pixel are NaNs
+        nan_mask_R = (np.isfinite(flattened_points[:,0]) & np.isfinite(flattened_points[:,1]) & np.isfinite(R_slice_values))
+        points_R_clean = flattened_points[nan_mask_R]
+        values_R_clean = R_slice_values[nan_mask_R]
+        #print(f"Lon {original_lon}: Points captured by mask: {len(points_R_clean)}")
+
+        # get interpolation locations (these are just the (lat,lon) pairs from the reprojected longitude slices
+        interp_locations = np.column_stack((reproj_lat_slice, reproj_lon_slice))
+
+        # print("REPROJ LAT SLICE")
+        # print(reproj_lat_slice)
+        # print("REPROJ LON SLICE")
+        # print(reproj_lon_slice)
+
+        if len(points_R_clean) >= 3 and len(values_R_clean) >= 3:   # minimum for 2D linear interpolation
+            R_intensity_profile = griddata(points_R_clean, values_R_clean, interp_locations, method='linear') #intensities along the interp_locations
+        else:
+            R_intensity_profile = np.full(len(interp_locations), np.nan)  # or 0
+
+        valid_interp_count = np.sum(np.isfinite(R_intensity_profile))
+        #print(f"Lon {original_lon}: Points successfully interpolated: {valid_interp_count}")
+
+        
+        bounding_box_mask = box_boundary_path.contains_points(interp_locations) #expects (N,2) like griddata 
+        R_nan_mask = np.isfinite(R_intensity_profile)
+        R_intensity_restricted = R_intensity_profile[bounding_box_mask & R_nan_mask]
+        reproj_lat_slice_restricted = reproj_lat_slice[bounding_box_mask & R_nan_mask]
+        reproj_lon_slice_restricted = reproj_lon_slice[bounding_box_mask & R_nan_mask]
+
+        #------OLD logic without resampling to ensure same number of points along each lon slice inside the bounding box-----#
+        # points_in_box = np.sum(bounding_box_mask)
+        # print(f"Lon {original_lon}: Points inside bounding box: {points_in_box}")
+
+        # if R_intensity_restricted.size==0:
+        #     #print("No points in this latitude range for this longitude slice.\n")
+        #     #continue # add nan instead of skipping all the longitude values
+        #     R_peak_lat_arr[idx] = np.nan
+        #     R_lon_arr[idx] = original_lon # still record the longitude, tho this is kinda meaningless bc it is the pre-projection lon
+        #     continue
+
+        # # along each latitude "line", pick out the peak latitude
+        # index_of_peak_intensity = np.argmax(R_intensity_restricted)
+        # peak_latitude = reproj_lat_slice_restricted[index_of_peak_intensity]
+        # lon_of_peak_lat = reproj_lon_slice_restricted[index_of_peak_intensity]
+        # R_peak_lat_arr[idx] = peak_latitude
+        # R_lon_arr[idx] = lon_of_peak_lat
+
+        # -----NEW logic, resample to max num points within each bounding box--------#        
+        if R_intensity_restricted.size > 1:
+            # create a normalized grid between the min and max latitude of THIS slice
+            standard_lat_grid = np.linspace(reproj_lat_slice_restricted.min(), 
+                                            reproj_lat_slice_restricted.max(), 
+                                            num_standard_samples)
+            
+            # 2. Interpolate the intensity onto this standard grid
+            # np.interp(x_new, x_original, y_original)
+            R_intensity_resampled = np.interp(standard_lat_grid, 
+                                              reproj_lat_slice_restricted, 
+                                              R_intensity_restricted)
+            
+            
+            # 3. Now pick your peak from the resampled data
+            idx_peak = np.argmax(R_intensity_resampled)
+            R_peak_lat_arr[idx] = standard_lat_grid[idx_peak]
+            
+            # also resample longitude to find the exact peak longitude coordinate
+            standard_lon_grid = np.interp(standard_lat_grid, 
+                                          reproj_lat_slice_restricted, 
+                                          reproj_lon_slice_restricted)
+            R_lon_arr[idx] = standard_lon_grid[idx_peak]
+        else:
+            # set to NaN if the slice doesn't intersect the aurora box
+            R_peak_lat_arr[idx] = np.nan
+            R_lon_arr[idx] = np.nan # Or original_lon, depending on your plotting needs
+
+    # need to convert to np arrays
+    R_peak_lat_arr = np.asarray(R_peak_lat_arr)
+    R_lon_arr = np.asarray(R_lon_arr)
+
+    print(f"\n{site_name}{new_h}m: len of R_peak_lat_arr:{len(R_peak_lat_arr)}, len of R_lon_arr:{len(R_lon_arr)}")
+
+    return R_lon_arr, R_peak_lat_arr
+
+def new_compute_metrics_for_altitude_10UC(
+    og_h, new_h,
+    t_arr,
+    full_azimuth_yknf, full_elevation_yknf, lat_cam_yknf, lon_cam_yknf,
+    full_azimuth_fsmi, full_elevation_fsmi, lat_cam_fsmi, lon_cam_fsmi,
+    yknf_rgb_asi_ds, fsmi_rgb_asi_ds,
+    lat_arr_interp, lon_arr_interp# so same number of longitude slices for all the different projected altitudes
+):
+    # ---- project ONCE per altitude ----
+    yknf_lat_proj, yknf_lon_proj = new_spherical_project_lat_lon(
+        full_azimuth_yknf, full_elevation_yknf,
+        lat_cam_yknf, lon_cam_yknf, new_h
+    )
+
+    fsmi_lat_proj, fsmi_lon_proj = new_spherical_project_lat_lon(
+        full_azimuth_fsmi, full_elevation_fsmi,
+        lat_cam_fsmi, lon_cam_fsmi, new_h
+    )
+
+    # fixed aurora box for 130km baseline 10 UTC 
+    lat_min_box = 59.9
+    lat_max_box = 61.6
+    lon_min_box = 246.5
+    lon_max_box = 249.3
+
+    ssd_vals = [] # sum of squared differences
+
+    yknf_peaks_all = []  # store peak arrays for each time_index
+    fsmi_peaks_all = []
+    
+    for time_index in t_arr:
+        print(f"{new_h}, {time_index}")
+        # ---- extract RGB frames ----
+        yknf_rgb, fsmi_rgb = mod_plot_lat_lon(
+            yknf_rgb_asi_ds, fsmi_rgb_asi_ds,
+            time_index,
+            "Yellowknife", "Fort Smith",
+            yknf_lat_proj, yknf_lon_proj,
+            fsmi_lat_proj, fsmi_lon_proj,
+            new_h
+        )
+        
+        # ---- interpolate (only need peak arrays) ----
+        _, yknf_peak = fixed_line_interpolate_10UC(
+            yknf_lat_proj, yknf_lon_proj, yknf_rgb,
+             lat_min_box, lat_max_box, 
+             lon_min_box, lon_max_box,
+             lat_cam_yknf, lon_cam_yknf,
+             "YKNF", time_index, 
+             og_h, new_h,
+             lat_arr_interp, lon_arr_interp        
+        )
+
+        _, fsmi_peak = fixed_line_interpolate_10UC(
+             fsmi_lat_proj, fsmi_lon_proj, fsmi_rgb, 
+             lat_min_box, lat_max_box, 
+             lon_min_box, lon_max_box,
+             lat_cam_fsmi, lon_cam_fsmi,
+             "FSMI", time_index, 
+             og_h, new_h,
+             lat_arr_interp, lon_arr_interp
+        )
+
+        yknf_peaks_all.append(yknf_peak)
+        fsmi_peaks_all.append(fsmi_peak)
+
+    # convert to arrays 
+    yknf_peaks_all = np.array(yknf_peaks_all)
+    fsmi_peaks_all = np.array(fsmi_peaks_all)
+
+    global_valid_mask = np.isfinite(yknf_peaks_all) & np.isfinite(fsmi_peaks_all)
+
+    for t_idx in range(len(t_arr)):
+        diff = yknf_peaks_all[t_idx][global_valid_mask[t_idx]] - fsmi_peaks_all[t_idx][global_valid_mask[t_idx]]
+       
+        # ---- Metrics ----
+        ssd_vals.append(np.nansum(np.abs(diff**2)))
+        
+    return new_h, ssd_vals
 
 
