@@ -1231,8 +1231,9 @@ def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
     # reverse project lat/lon expect degrees 
 
     # reprojecting the bounding box (separately loop over the 2 longtiudes and 2 latitudes)
-    lat_box_arr = np.arange(lat_box_min, lat_box_max, 0.5) # need to correpond to to the lon_min_box and lon_max_box (2 separate arrays with lon cst), maybe change step
-    lon_box_arr = np.arange(lon_box_min, lon_box_max, 0.5) # need to correspond to the lat_min_box and lat_max_box (2 separate arrays with lat cst), maybe change step
+    # HAD TO MAKE THIS COARSER-- had issues with bounding box in fixed_line_interpolate, where bounding box mask was taking out too much; issue was bc points on the boundary 
+    lat_box_arr = np.arange(lat_box_min, lat_box_max, 0.1) # need to correpond to to the lon_min_box and lon_max_box (2 separate arrays with lon cst), maybe change step
+    lon_box_arr = np.arange(lon_box_min, lon_box_max, 0.1) # need to correspond to the lat_min_box and lat_max_box (2 separate arrays with lat cst), maybe change step
     
     # over latitudes
     lon_box_min_arr = np.full(shape=len(lat_box_arr), fill_value=lon_box_min) #cst value lonmin
@@ -1275,7 +1276,7 @@ def plot_resampled_bounding_box(lat_proj, lon_proj, rgb, time_index, site_name,
 
     plt.figure(figsize=(8,8))
     plt.scatter(lon_proj.flatten(),lat_proj.flatten(),c=rgb.reshape(-1, 3)/256,s=1, alpha=1) 
-    plt.scatter(all_resampled_lons, all_resampled_lats, color='green', s=0.5, alpha=1, label='Resampled Grid Points')
+    plt.scatter(all_resampled_lons, all_resampled_lats, color='green', s=0.8, alpha=1, label='Resampled Grid Points')
     plt.plot(reproj_left_lon, reproj_left_lat, marker=".", markersize=0.5, linestyle="-", color='red')
     plt.plot(reproj_right_lon, reproj_right_lat, marker=".", markersize=0.5, linestyle="-", color='red')
     plt.plot(reproj_top_lon, reproj_top_lat, marker=".", markersize=0.5, linestyle="-", color='red')
@@ -1367,9 +1368,10 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
    # print(f"{site_name}{new_h} reproj_lat_slice_arr len: {len(reproj_lat_slice_arr)}")
   #  print(f"REPROJ LAT SLICE ARR: {reproj_lat_slice_arr}")
 
-    # define bounding box as a polygon, use for masking later 
-    box_lats = np.concatenate([reproj_top_lat, reproj_right_lat, reproj_bottom_lat, reproj_left_lat])
-    box_lons = np.concatenate([reproj_top_lon, reproj_right_lon, reproj_bottom_lon, reproj_left_lon])
+    # define bounding box as a polygon, use for masking later
+    # vertice order needs to be in sequential flow: bottom (right to left), left (bot to top), needed to switch order manually
+    box_lats = np.concatenate([reproj_top_lat, reproj_right_lat, reproj_bottom_lat[::-1], reproj_left_lat[::-1]])
+    box_lons = np.concatenate([reproj_top_lon, reproj_right_lon, reproj_bottom_lon[::-1], reproj_left_lon[::-1]])
     vertices = np.column_stack((box_lats, box_lons))
     box_boundary_path = Path(vertices)
 
@@ -1394,7 +1396,8 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
     R_peak_lat_arr = np.full(num_slices, np.nan)
     R_lon_arr = np.full(num_slices, np.nan)# longitudes that correspond to the peak latitude 
     for idx, (original_lon,reproj_lat_slice, reproj_lon_slice) in enumerate(zip(original_lon_arr, reproj_lat_slice_arr, reproj_lon_slice_arr)):
-
+        #print("\n")
+        #print(f"original_lon: {original_lon}")
         # # plot the reprojected longitude slice line and the reprojected bounding box
         # plot_lon_slice_bounding_box(lat_proj, lon_proj, 
         #                             reproj_lat_slice, reproj_lon_slice, #slice
@@ -1420,7 +1423,7 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
         interp_locations = np.column_stack((reproj_lat_slice, reproj_lon_slice))
 
         # print("REPROJ LAT SLICE")
-        # print(reproj_lat_slice)
+        #print(f"reproj_lat_slice: {reproj_lat_slice}")
         # print("REPROJ LON SLICE")
         # print(reproj_lon_slice)
 
@@ -1431,13 +1434,16 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
 
         valid_interp_count = np.sum(np.isfinite(R_intensity_profile))
         #print(f"Lon {original_lon}: Points successfully interpolated: {valid_interp_count}")
+        #print(f"R_intensity_profile: {R_intensity_profile}")
 
         
         bounding_box_mask = box_boundary_path.contains_points(interp_locations) #expects (N,2) like griddata 
+        #print(f"bounding_box_mask: {bounding_box_mask}")
         R_nan_mask = np.isfinite(R_intensity_profile)
         R_intensity_restricted = R_intensity_profile[bounding_box_mask & R_nan_mask]
         reproj_lat_slice_restricted = reproj_lat_slice[bounding_box_mask & R_nan_mask]
         reproj_lon_slice_restricted = reproj_lon_slice[bounding_box_mask & R_nan_mask]
+        #print(f"reproj_lat_slice_restricted: {np.sort(reproj_lat_slice_restricted)}")
 
         #------OLD logic without resampling to ensure same number of points along each lon slice inside the bounding box-----#
         # points_in_box = np.sum(bounding_box_mask)
@@ -1464,18 +1470,23 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
                                             reproj_lat_slice_restricted.max(), 
                                             num_standard_samples)
 
-            print("standard lat grid:")
-            print(standard_lat_grid)
+            #print(f"resampled lat: {standard_lat_grid}")
 
+            # also resample longitude to find the exact peak longitude coordinate
             standard_lon_grid = np.interp(standard_lat_grid, 
                                           reproj_lat_slice_restricted, 
                                           reproj_lon_slice_restricted)
+
+            #print(f"resampled lon: {standard_lon_grid}")
+
             
             # interpolate the intensity onto this standard grid
             # np.interp(x_new, x_original, y_original)
             R_intensity_resampled = np.interp(standard_lat_grid, 
                                               reproj_lat_slice_restricted, 
                                               R_intensity_restricted)
+
+            #print(f"R_intensity_resampled: {R_intensity_resampled}")
 
             all_resampled_lats.extend(standard_lat_grid)
             all_resampled_lons.extend(standard_lon_grid)
@@ -1486,29 +1497,27 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
             idx_peak = np.argmax(R_intensity_resampled)
             R_peak_lat_arr[idx] = standard_lat_grid[idx_peak]
             
-            # also resample longitude to find the exact peak longitude coordinate
-            standard_lon_grid = np.interp(standard_lat_grid, 
-                                          reproj_lat_slice_restricted, 
-                                          reproj_lon_slice_restricted)
             R_lon_arr[idx] = standard_lon_grid[idx_peak]
         else:
+            #print("R_intensity_restricted <= 1")
             # set to NaN if the slice doesn't intersect the aurora box
             R_peak_lat_arr[idx] = np.nan
             R_lon_arr[idx] = np.nan # Or original_lon, depending on your plotting needs
 
     # plot the bounding box and the resampled points within 
-    plot_resampled_bounding_box(lat_proj, lon_proj, rgb, time_index, site_name,
-                                 all_resampled_lats, all_resampled_lons, # resampled points inside the bounding boxes 
-                                 reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
-                                 reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon,
-                                 new_h)
+    # plot_resampled_bounding_box(lat_proj, lon_proj, rgb, time_index, site_name,
+    #                              all_resampled_lats, all_resampled_lons, # resampled points inside the bounding boxes 
+    #                              reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
+    #                              reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon,
+    #                              new_h)
 
     # need to convert to np arrays
     R_peak_lat_arr = np.asarray(R_peak_lat_arr)
     R_lon_arr = np.asarray(R_lon_arr)
 
-    print(f"\n{site_name}{new_h}m: len of R_peak_lat_arr:{len(R_peak_lat_arr)}, len of R_lon_arr:{len(R_lon_arr)}")
+    #print(f"\n{site_name}{new_h}m: len of R_peak_lat_arr:{len(R_peak_lat_arr)}, len of R_lon_arr:{len(R_lon_arr)}")
 
+    #print("\n\n")
     return R_lon_arr, R_peak_lat_arr
 
 def new_compute_metrics_for_altitude(
@@ -1591,6 +1600,7 @@ def new_compute_metrics_for_altitude(
              og_h, new_h,
              global_lon_arr, global_lat_arr        
         )
+
 
         _, fsmi_peak = fixed_line_interpolate(
              fsmi_lat_proj, fsmi_lon_proj, fsmi_rgb, 
