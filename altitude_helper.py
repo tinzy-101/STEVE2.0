@@ -1197,7 +1197,7 @@ def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
 
           ** these are all in degrees **
           lat_slice_target_arr = all the different latitudes for which to look at for each longitude slice (so constant)
-          lon_slice_target_arrr = array of all the different lontiudes to slice the aurora at
+          lon_slice_target_arr = array of all the different lontiudes to slice the aurora at
           single_lon_target_arr = taking one of the longitudes from lon_slice_target_arr and making an array same size as lat_slice_target_arr of all the same lon value
           
 
@@ -1221,6 +1221,87 @@ def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
     for lon_slice_target in lon_slice_target_arr:
         single_lon_target_arr = np.full(shape=len(lat_slice_target_arr), fill_value=lon_slice_target)
         reproj_az_arr, reproj_el_arr = reverse_project_lat_lon(lat_slice_target_arr, single_lon_target_arr, lat_camera, lon_camera, og_h)
+        reproj_lat_arr, reproj_lon_arr = new_spherical_project_lat_lon(reproj_az_arr, reproj_el_arr, lat_camera, lon_camera, new_h)
+        reproj_lat_arr_dict[lon_slice_target] = reproj_lat_arr
+        reproj_lon_arr_dict[lon_slice_target] = reproj_lon_arr
+
+        #print(f"{lon_slice_target}: reproj lat arr: {reproj_lat_arr}")
+        #print(f"{lon_slice_target}: reproj lon arr: {reproj_lon_arr}")
+
+    # reverse project lat/lon expect degrees 
+
+    # reprojecting the bounding box (separately loop over the 2 longtiudes and 2 latitudes)
+    # HAD TO MAKE THIS COARSER-- had issues with bounding box in fixed_line_interpolate, where bounding box mask was taking out too much; issue was bc points on the boundary 
+    lat_box_arr = np.arange(lat_box_min, lat_box_max, 0.1) # need to correpond to to the lon_min_box and lon_max_box (2 separate arrays with lon cst), maybe change step
+    lon_box_arr = np.arange(lon_box_min, lon_box_max, 0.1) # need to correspond to the lat_min_box and lat_max_box (2 separate arrays with lat cst), maybe change step
+    
+    # over latitudes
+    lon_box_min_arr = np.full(shape=len(lat_box_arr), fill_value=lon_box_min) #cst value lonmin
+    lon_box_max_arr = np.full(shape=len(lat_box_arr), fill_value=lon_box_max) #cst value lonmax
+    az_reproj_left_top_to_bottom, el_reproj_left_top_to_bottom = reverse_project_lat_lon(lat_box_arr, lon_box_min_arr, lat_camera, lon_camera, og_h) #varying lat at lonmin
+    az_reproj_right_top_to_bottom, el_reproj_right_top_to_bottom = reverse_project_lat_lon(lat_box_arr, lon_box_max_arr, lat_camera, lon_camera, og_h) #varying lat at lonmax
+    reproj_left_arr_lat, reproj_left_arr_lon = new_spherical_project_lat_lon(az_reproj_left_top_to_bottom, el_reproj_left_top_to_bottom, lat_camera, lon_camera, new_h)
+    reproj_right_arr_lat, reproj_right_arr_lon = new_spherical_project_lat_lon(az_reproj_right_top_to_bottom, el_reproj_right_top_to_bottom, lat_camera, lon_camera, new_h)
+    
+    # over longitudes  
+    lat_box_min_arr = np.full(shape=len(lon_box_arr), fill_value=lat_box_min) #cst value latmin
+    lat_box_max_arr = np.full(shape=len(lon_box_arr), fill_value=lat_box_max) #cst value latmax
+    az_reproj_bottom_left_to_right, el_reproj_bottom_left_to_right = reverse_project_lat_lon(lat_box_min_arr, lon_box_arr, lat_camera, lon_camera, og_h) #varying lon at latmax
+    az_reproj_top_left_to_right, el_reproj_top_left_to_right = reverse_project_lat_lon(lat_box_max_arr, lon_box_arr, lat_camera, lon_camera, og_h) #varying lon at latmin
+    reproj_bottom_arr_lat, reproj_bottom_arr_lon = new_spherical_project_lat_lon(az_reproj_bottom_left_to_right, el_reproj_bottom_left_to_right, lat_camera, lon_camera, new_h)
+    reproj_top_arr_lat, reproj_top_arr_lon = new_spherical_project_lat_lon(az_reproj_top_left_to_right, el_reproj_top_left_to_right, lat_camera, lon_camera, new_h)
+
+    # inside project_lat_slices_and_box, after reverse_project
+    #print(f"Elevation angles range: {np.nanmin(az_reproj_left_top_to_bottom)} to {np.nanmax(el_reproj_left_top_to_bottom)}")
+
+    
+    return (reproj_lat_arr_dict, reproj_lon_arr_dict,
+            reproj_left_arr_lat, reproj_left_arr_lon, 
+            reproj_right_arr_lat, reproj_right_arr_lon, 
+            reproj_bottom_arr_lat, reproj_bottom_arr_lon,
+            reproj_top_arr_lat, reproj_top_arr_lon)
+
+
+
+
+def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr, 
+                               lat_box_max, lat_box_min, lon_box_max, lon_box_min,
+                               lat_camera, lon_camera, og_h, new_h):
+    """
+    Goal: loop over all of the latitudes in lat_target_arr, match each lat with a longitude in lon_target array to get lat,lon
+          pairs for 1 latitude slice. apply reverse_project_lat_lon() in order to get the azimuth and elevation for each lat,lon
+          (still inside the loop for 1 longitude). then reproject the azimuth and elevation back to lat,lon but to a new altitude (new_h).
+          then in fixed_line_interpolate(), need to take these arrays of lat,lon projected to a new height and put them into the 
+          interpolation function!
+
+
+          ** these are all in degrees **
+          lon_slice_target_arr = all the different longitudes to look at for each longitude slice (constant for each latitude we choose/loop thru)
+          lat_slice_target_arr = array of all the different latitudes to slice the aurora at (within the bounding box)
+          single_lat_target_arr = taking one of the latitudes from lat_slice_target_arr and making an array same size as lon_slice_target_arr of all the same lat value (cst array of len(lon_slice_target_arr))
+          
+
+    output:
+        reproj_lat_arr_dict = dictionary w/ key: the original longitude slice we were sampling at (from og_h), value: array of lats after the new spherical projection (to new_h)
+        reproj_lon_arr_dict = dictionary w/ key: the original longitude slice we were sampling at (from og_h), value: array of lons after the new spherical projection (to new_h)
+        ### this logic is unchanged from project_lon_slices_and_box ###
+        reproj_left_arr = array of (lat, lon) pairs of the original left side of the bounding box projected up to new_h
+        reproj_right_arr = array of (lat, lon) pairs of the original right side of the bounding box projected up to new_h
+        reproj_bottom_arr = array of (lat, lon) pairs of the original bottom side of the bounding box projected up to new_h
+        reproj_top_arr = array of (lat, lon) pairs of the original top side of the bounding box projected up to new_h
+        ^ now instead of doing the pairs, need to return the raw latitude and longitude for each edge of the bounding box --> 2 + 4*2=10 total return values
+
+    """
+    #print(f"BEGIN lat_slice_target_arr in project_lat_slices_and_box: {lat_slice_target_arr}")
+    #print(f"BEGIN lon_slice_target_arr in project_lat_slices_and_box: {lon_slice_target_arr}")
+    
+
+    # reprojecting the latitude slices we are sampling at
+    reproj_lat_arr_dict = {}
+    reproj_lon_arr_dict = {}
+    for lat_slice_target in lat_slice_target_arr:
+        single_lat_target_arr = np.full(shape=len(lon_slice_target_arr), fill_value=lat_slice_target)
+        reproj_az_arr, reproj_el_arr = reverse_project_lat_lon(single_lat_target_arr, lon_slice_target_arr, lat_camera, lon_camera, og_h)
         reproj_lat_arr, reproj_lon_arr = new_spherical_project_lat_lon(reproj_az_arr, reproj_el_arr, lat_camera, lon_camera, new_h)
         reproj_lat_arr_dict[lon_slice_target] = reproj_lat_arr
         reproj_lon_arr_dict[lon_slice_target] = reproj_lon_arr
