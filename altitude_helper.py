@@ -269,6 +269,7 @@ def enhance_fences_clahe(channel_data):
 
 
 
+# CORRECTED FOR 10UT, 110km BASELINE
 def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_yknf, site_name_fsmi, yknf_lat, yknf_lon, fsmi_lat, fsmi_lon, h_target):
     ''' 
     Plots the projected latitude and longitude of the YKNF and FSMI, and overlays them. Specifically for the 10UTC event to focus on the picket fences
@@ -307,7 +308,7 @@ def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_y
     time_str = time_obj.strftime("%b. %d, %Y %H:%M:%S UT")
         
     # # contrast adjustment: alpha=contrast, beta=brightness
-    alpha = 6
+    alpha = 7
     beta = 5
     rgb_yknf = np.stack([R_yknf, G_yknf, B_yknf], axis=-1)  # shape: (x, y, 3)
     rgb_fsmi = np.stack([R_fsmi, G_fsmi, B_fsmi], axis=-1)  # shape: (x, y, 3)
@@ -350,11 +351,11 @@ def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_y
     # yknf projected
     fig1, ax1 = plt.subplots(figsize=(8,8))
     scat1 = ax1.scatter(yknf_lon.flatten(),yknf_lat.flatten(),c=rgb_yknf.reshape(-1, 3)/256,s=1)
-    ax1.axvline(x=247.2, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax1.axvline(x=248.8, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax1.axvline(x=247.69, color='y', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax1.axhline(y=60.0, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax1.axhline(y=60.9, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axvline(x=246.75, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axvline(x=248.1, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axvline(x=246.97, color='y', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axhline(y=60.55, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax1.axhline(y=61.2, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
     plt.xlim((x_plot_min, x_plot_max))
     plt.ylim((y_plot_min, y_plot_max))
     ax1.set_ylabel("Latitude (deg)")
@@ -365,11 +366,11 @@ def green_plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_y
     # fsmi projected
     fig2, ax2 = plt.subplots(figsize=(8,8))
     scat2 = ax2.scatter(fsmi_lon.flatten(),fsmi_lat.flatten(),c=rgb_fsmi.reshape(-1, 3)/256,s=1)
-    ax2.axvline(x=246.5, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax2.axvline(x=248, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax2.axvline(x=247.69, color='y', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax2.axhline(y=60.85, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
-    ax2.axhline(y=61.5, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axvline(x=247.1, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axvline(x=248.1, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axvline(x=246.97, color='y', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axhline(y=60.7, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
+    ax2.axhline(y=61.2, color='r', linestyle='--', linewidth=0.5, label='Latitude 240')
     plt.xlim((x_plot_min, x_plot_max))
     plt.ylim((y_plot_min, y_plot_max))
     ax2.set_ylabel("Latitude (deg)")
@@ -1114,6 +1115,61 @@ def plot_lon_slice_bounding_box(lat_proj, lon_proj,
     plt.ylim((y_plot_min, y_plot_max))
     plt.show()
 
+def plot_lat_slice_bounding_box(lat_proj, lon_proj, 
+                                reproj_lat_slice, reproj_lon_slice, #slice
+                                reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
+                                reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon, #bounding box
+                                rgb, time_index, site_name, new_h):
+    ''' 
+        Plots the projected latitude slices and the bounding box for a particular projection (sanity check before doing interpolation,
+        and to see how much projecting the latitude slices warps the lines and box. 
+    '''        
+    
+    # # Extract time and format it
+    # raw_time = yknf_rgb_asi_ds.times.values[time_index]
+    # time_obj = pd.to_datetime(raw_time.decode("utf-8").replace(" UTC", ""))
+    # time_str = time_obj.strftime("%b. %d, %Y %H:%M:%S UT")
+        
+    # baseline yknf 110 plot limits, scale larger as projecting to larger altitudes
+    # x_plot_min = 221.94 - h_target / 100000 * 25 
+    # x_plot_max = 276.13 + h_target / 100000 * 25
+    # y_plot_min = 47.37 - h_target / 100000 * 5
+    # y_plot_max = 73.27 + h_target / 100000 * 5
+    x_plot_min = 215 #lon
+    x_plot_max = 275 #lon
+    y_plot_min = 45 #lat
+    y_plot_max = 80 #lat
+
+    lon_s = np.array(reproj_lon_slice).flatten()
+    lat_s = np.array(reproj_lat_slice).flatten()
+
+    # mask out nans for matplotlib 
+    mask = np.isfinite(lon_s) & np.isfinite(lat_s)
+
+    # print(reproj_lon_slice)
+    # print(reproj_lat_slice)
+
+    # print(lon_s[mask])
+    # print(lat_s[mask])
+
+    # x is longitude, y is latitude
+    plt.figure(figsize=(8,8))
+    plt.scatter(lon_proj.flatten(),lat_proj.flatten(),c=rgb.reshape(-1, 3)/255.0,s=1, alpha=1) #0.15
+    if np.any(mask):
+        plt.plot(lon_s[mask], lat_s[mask], marker=".", markersize=1, linestyle="-", color='yellow', linewidth=0.5, label='Slice') # NEED TO FIX THIS BUG, SWITCHED LAT/LON??
+    else:
+        print("Warning: reproj_slice is entirely NaNs!")
+    #plt.plot(reproj_lon_slice, reproj_lat_slice, marker="o", linestyle="-", color='green') 
+    plt.plot(reproj_left_lon, reproj_left_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_right_lon, reproj_right_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_top_lon, reproj_top_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.plot(reproj_bottom_lon, reproj_bottom_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+    plt.xlabel("Longitude (deg)")
+    plt.ylabel("Latitude (deg)")
+    plt.title(f"Overlaid {new_h/1000}km Projection - timeidx{time_index}", pad=30)
+    plt.xlim((x_plot_min, x_plot_max))
+    plt.ylim((y_plot_min, y_plot_max))
+    plt.show()
 
 
 def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h):
@@ -1184,7 +1240,7 @@ def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h)
 
 
 
-def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr, 
+def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr, 
                                lat_box_max, lat_box_min, lon_box_max, lon_box_min,
                                lat_camera, lon_camera, og_h, new_h):
     """
@@ -1264,7 +1320,7 @@ def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
 
 
 
-def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr, 
+def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr, 
                                lat_box_max, lat_box_min, lon_box_max, lon_box_min,
                                lat_camera, lon_camera, og_h, new_h):
     """
@@ -1276,7 +1332,7 @@ def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
 
 
           ** these are all in degrees **
-          lon_slice_target_arr = all the different longitudes to look at for each longitude slice (constant for each latitude we choose/loop thru)
+          lon_slice_target_arr = all the different longitudes to look at for each latitude slice (constant for each latitude we choose/loop thru)
           lat_slice_target_arr = array of all the different latitudes to slice the aurora at (within the bounding box)
           single_lat_target_arr = taking one of the latitudes from lat_slice_target_arr and making an array same size as lon_slice_target_arr of all the same lat value (cst array of len(lon_slice_target_arr))
           
@@ -1301,10 +1357,12 @@ def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
     reproj_lon_arr_dict = {}
     for lat_slice_target in lat_slice_target_arr:
         single_lat_target_arr = np.full(shape=len(lon_slice_target_arr), fill_value=lat_slice_target)
+        # print(f"SINGEL LAT TARGET ARR: {single_lat_target_arr}")
+        # print(f"LON SLICE TARGET ARR: {lon_slice_target_arr}")
         reproj_az_arr, reproj_el_arr = reverse_project_lat_lon(single_lat_target_arr, lon_slice_target_arr, lat_camera, lon_camera, og_h)
         reproj_lat_arr, reproj_lon_arr = new_spherical_project_lat_lon(reproj_az_arr, reproj_el_arr, lat_camera, lon_camera, new_h)
-        reproj_lat_arr_dict[lon_slice_target] = reproj_lat_arr
-        reproj_lon_arr_dict[lon_slice_target] = reproj_lon_arr
+        reproj_lat_arr_dict[lat_slice_target] = reproj_lat_arr
+        reproj_lon_arr_dict[lat_slice_target] = reproj_lon_arr
 
         #print(f"{lon_slice_target}: reproj lat arr: {reproj_lat_arr}")
         #print(f"{lon_slice_target}: reproj lon arr: {reproj_lon_arr}")
