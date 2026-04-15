@@ -1063,26 +1063,25 @@ def plot_lon_slice_bounding_box(lat_proj, lon_proj,
                                 reproj_lat_slice, reproj_lon_slice, #slice
                                 reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
                                 reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon, #bounding box
-                                rgb, time_index, site_name, new_h):
+                                rgb, time_index, site_name, new_h, 
+                                picket):
     ''' 
         Plots the projected longiutde slices and the bounding box for a particular projection (sanity check before doing interpolation,
         and to see how much projecting the latitude slices warps the lines and box. 
     '''        
-    
-    # # Extract time and format it
-    # raw_time = yknf_rgb_asi_ds.times.values[time_index]
-    # time_obj = pd.to_datetime(raw_time.decode("utf-8").replace(" UTC", ""))
-    # time_str = time_obj.strftime("%b. %d, %Y %H:%M:%S UT")
-        
-    # baseline yknf 110 plot limits, scale larger as projecting to larger altitudes
-    # x_plot_min = 221.94 - h_target / 100000 * 25 
-    # x_plot_max = 276.13 + h_target / 100000 * 25
-    # y_plot_min = 47.37 - h_target / 100000 * 5
-    # y_plot_max = 73.27 + h_target / 100000 * 5
     x_plot_min = 215 #lon
     x_plot_max = 275 #lon
     y_plot_min = 45 #lat
     y_plot_max = 80 #lat
+
+    lat_lon_aspect_ratio = (x_plot_max - x_plot_min) / (y_plot_max - y_plot_min)
+    x_pad = 2.0 # amt for left and right each
+    y_pad = x_pad / lat_lon_aspect_ratio
+
+    x_plot_min_zoom = min(np.min(reproj_bottom_lon), np.min(reproj_top_lon)) - x_pad
+    x_plot_max_zoom = max(np.max(reproj_bottom_lon), np.max(reproj_top_lon)) + x_pad
+    y_plot_min_zoom = min(np.min(reproj_left_lat), np.min(reproj_right_lat)) - y_pad
+    y_plot_max_zoom = max(np.max(reproj_left_lat), np.max(reproj_right_lat)) + y_pad
 
     lon_s = np.array(reproj_lon_slice).flatten()
     lat_s = np.array(reproj_lat_slice).flatten()
@@ -1090,31 +1089,67 @@ def plot_lon_slice_bounding_box(lat_proj, lon_proj,
     # mask out nans for matplotlib 
     mask = np.isfinite(lon_s) & np.isfinite(lat_s)
 
-    # print(reproj_lon_slice)
-    # print(reproj_lat_slice)
-
-    # print(lon_s[mask])
-    # print(lat_s[mask])
-
-    # x is longitude, y is latitude
-    plt.figure(figsize=(8,8))
-    plt.scatter(lon_proj.flatten(),lat_proj.flatten(),c=rgb.reshape(-1, 3)/255.0,s=1, alpha=1) #0.15
-    if np.any(mask):
-        plt.plot(lon_s[mask], lat_s[mask], marker=".", markersize=0.5, linestyle="-", color='yellow', linewidth=0.5, label='Slice') # NEED TO FIX THIS BUG, SWITCHED LAT/LON??
+    # if we are working with pickets (aka 10 UT event), want to include a zoomed in subplot 
+    if(picket): 
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        def draw_elements(ax):
+            ax.scatter(lon_proj.flatten(), lat_proj.flatten(), c=rgb.reshape(-1, 3)/255.0, s=1, alpha=1)
+            if np.any(mask):
+                ax.plot(lon_s[mask], lat_s[mask], marker=".", markersize=0.5, 
+                        linestyle="-", color='yellow', linewidth=0.5, label='Slice')
+            
+            # Draw Bounding Box (Red lines)
+            ax.plot(reproj_left_lon, reproj_left_lat, linestyle="-", color='red', linewidth=1)
+            ax.plot(reproj_right_lon, reproj_right_lat, linestyle="-", color='red', linewidth=1)
+            ax.plot(reproj_top_lon, reproj_top_lat, linestyle="-", color='red', linewidth=1)
+            ax.plot(reproj_bottom_lon, reproj_bottom_lat, linestyle="-", color='red', linewidth=1)
+            
+            ax.set_xlabel("Longitude (deg)")
+            ax.set_ylabel("Latitude (deg)")
+    
+        # --- Plot 1: Full View ---
+        draw_elements(ax1)
+        ax1.set_title(f"Full View - {new_h/1000}km")
+        ax1.set_xlim(x_plot_min, x_plot_max)
+        ax1.set_ylim(y_plot_min, y_plot_max)
+        
+        # Add a dashed rectangle to ax1 to show WHERE we are zooming
+        rect = plt.Rectangle((x_plot_min_zoom, y_plot_min_zoom), 
+                             x_plot_max_zoom - x_plot_min_zoom, 
+                             y_plot_max_zoom - y_plot_min_zoom, 
+                             linewidth=1, edgecolor='white', facecolor='none', linestyle='--')
+        ax1.add_patch(rect)
+    
+        # --- Plot 2: Zoomed View ---
+        draw_elements(ax2)
+        ax2.set_title(f"Zoomed Corner View")
+        ax2.set_xlim(x_plot_min_zoom, x_plot_max_zoom)
+        ax2.set_ylim(y_plot_min_zoom, y_plot_max_zoom)
+    
+        plt.suptitle(f"Sanity Check: {site_name} - TimeIdx {time_index}", fontsize=16)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust for suptitle
+        plt.show()
     else:
-        print("Warning: reproj_slice is entirely NaNs!")
-    #plt.plot(reproj_lon_slice, reproj_lat_slice, marker="o", linestyle="-", color='green') 
-    plt.plot(reproj_left_lon, reproj_left_lat, marker=".", markersize=0.5, linestyle="-", color='red')
-    plt.plot(reproj_right_lon, reproj_right_lat, marker=".", markersize=0.5, linestyle="-", color='red')
-    plt.plot(reproj_top_lon, reproj_top_lat, marker=".", markersize=0.5, linestyle="-", color='red')
-    plt.plot(reproj_bottom_lon, reproj_bottom_lat, marker=".", markersize=0.5, linestyle="-", color='red')
-    plt.xlabel("Longitude (deg)")
-    plt.ylabel("Latitude (deg)")
-    plt.title(f"Overlaid {new_h/1000}km Projection - timeidx{time_index}", pad=30)
-    plt.xlim((x_plot_min, x_plot_max))
-    plt.ylim((y_plot_min, y_plot_max))
-    plt.show()
+        # x is longitude, y is latitude
+        plt.figure(figsize=(8,8))
+        plt.scatter(lon_proj.flatten(),lat_proj.flatten(),c=rgb.reshape(-1, 3)/255.0,s=1, alpha=1) #0.15
+        if np.any(mask):
+            plt.plot(lon_s[mask], lat_s[mask], marker=".", markersize=0.5, linestyle="-", color='yellow', linewidth=0.5, label='Slice') # NEED TO FIX THIS BUG, SWITCHED LAT/LON??
+        else:
+            print("Warning: reproj_slice is entirely NaNs!")
+        #plt.plot(reproj_lon_slice, reproj_lat_slice, marker="o", linestyle="-", color='green') 
+        plt.plot(reproj_left_lon, reproj_left_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+        plt.plot(reproj_right_lon, reproj_right_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+        plt.plot(reproj_top_lon, reproj_top_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+        plt.plot(reproj_bottom_lon, reproj_bottom_lat, marker=".", markersize=0.5, linestyle="-", color='red')
+        plt.xlabel("Longitude (deg)")
+        plt.ylabel("Latitude (deg)")
+        plt.title(f"Overlaid {new_h/1000}km Projection - timeidx{time_index}", pad=30)
+        plt.xlim((x_plot_min, x_plot_max))
+        plt.ylim((y_plot_min, y_plot_max))
+        plt.show()
 
+    
 def plot_lat_slice_bounding_box(lat_proj, lon_proj, 
                                 reproj_lat_slice, reproj_lon_slice, #slice
                                 reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, #bounding box
@@ -1275,7 +1310,8 @@ def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
     reproj_lat_arr_dict = {}
     reproj_lon_arr_dict = {}
     for lon_slice_target in lon_slice_target_arr:
-        single_lon_target_arr = np.full(shape=len(lat_slice_target_arr), fill_value=lon_slice_target)
+        print(f"lon_slice_target: {lon_slice_target}")
+        single_lon_target_arr = np.full(shape=len(lat_slice_target_arr), fill_value=lon_slice_target) # fill longitude array with constants 
         reproj_az_arr, reproj_el_arr = reverse_project_lat_lon(lat_slice_target_arr, single_lon_target_arr, lat_camera, lon_camera, og_h)
         reproj_lat_arr, reproj_lon_arr = new_spherical_project_lat_lon(reproj_az_arr, reproj_el_arr, lat_camera, lon_camera, new_h)
         reproj_lat_arr_dict[lon_slice_target] = reproj_lat_arr
@@ -1286,10 +1322,11 @@ def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
 
     # reverse project lat/lon expect degrees 
 
+    num_samples = 500
     # reprojecting the bounding box (separately loop over the 2 longtiudes and 2 latitudes)
     # HAD TO MAKE THIS COARSER-- had issues with bounding box in fixed_line_interpolate, where bounding box mask was taking out too much; issue was bc points on the boundary 
-    lat_box_arr = np.arange(lat_box_min, lat_box_max, 0.1) # need to correpond to to the lon_min_box and lon_max_box (2 separate arrays with lon cst), maybe change step
-    lon_box_arr = np.arange(lon_box_min, lon_box_max, 0.1) # need to correspond to the lat_min_box and lat_max_box (2 separate arrays with lat cst), maybe change step
+    lat_box_arr = np.arange(lat_box_min, lat_box_max, 0.01) # need to correpond to to the lon_min_box and lon_max_box (2 separate arrays with lon cst), maybe change step
+    lon_box_arr = np.arange(lon_box_min, lon_box_max, 0.01) # need to correspond to the lat_min_box and lat_max_box (2 separate arrays with lat cst), maybe change step
     
     # over latitudes
     lon_box_min_arr = np.full(shape=len(lat_box_arr), fill_value=lon_box_min) #cst value lonmin
