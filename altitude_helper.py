@@ -258,13 +258,6 @@ def plot_lat_lon(yknf_rgb_asi_ds, fsmi_rgb_asi_ds, time_index, site_name_yknf, s
 
     return rgb_yknf_adjusted, rgb_fsmi_adjusted
 
-def enhance_fences_clahe(channel_data):
-    # Create a CLAHE object (clipLimit 2-4 is good, tileGridSize 8x8 or 16x16)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    return clahe.apply(channel_data.astype(np.uint8))
-
-
-
 
 
 
@@ -1109,7 +1102,7 @@ def plot_lon_slice_bounding_box(lat_proj, lon_proj,
     
         # --- Plot 1: Full View ---
         draw_elements(ax1)
-        ax1.set_title(f"Full View - {new_h/1000}km")
+        ax1.set_title(f"{site_name} Full View - {new_h/1000}km")
         ax1.set_xlim(x_plot_min, x_plot_max)
         ax1.set_ylim(y_plot_min, y_plot_max)
         
@@ -1144,7 +1137,7 @@ def plot_lon_slice_bounding_box(lat_proj, lon_proj,
         plt.plot(reproj_bottom_lon, reproj_bottom_lat, marker=".", markersize=0.5, linestyle="-", color='red')
         plt.xlabel("Longitude (deg)")
         plt.ylabel("Latitude (deg)")
-        plt.title(f"Overlaid {new_h/1000}km Projection - timeidx{time_index}", pad=30)
+        plt.title(f"{site_name} {new_h/1000}km Projection - timeidx{time_index}", pad=30)
         plt.xlim((x_plot_min, x_plot_max))
         plt.ylim((y_plot_min, y_plot_max))
         plt.show()
@@ -1465,6 +1458,151 @@ def plot_resampled_bounding_box(lat_proj, lon_proj, rgb, time_index, site_name,
     plt.show()
 
 
+def fixed_line_interp_bsub(lat_proj, lon_proj, rgb, 
+                             lat_min_box, lat_max_box, 
+                             lon_min_box, lon_max_box,
+                             lat_camera, lon_camera,
+                             site_name, time_index, 
+                             og_h, new_h,
+                             global_lon_arr, global_lat_arr):
+    """ includes slice-by-slice background subtraction """
+    print(f"\n====={new_h/1000.0}km PROJECTION=======")
+    #print(f"Total {len(global_lon_arr)} longitudes, and for each of these longitudes have   {len(global_lat_arr)} latitudes to interpolate\n")
+
+    # separate into R channel
+    R = rgb[:,:, 0]
+
+    # reproject the latitude slices and the bounding box for each projection
+    reproj_lat_arr_dict, reproj_lon_arr_dict, reproj_left_lat, reproj_left_lon, reproj_right_lat, reproj_right_lon, reproj_bottom_lat, reproj_bottom_lon, reproj_top_lat, reproj_top_lon = project_lat_slices_and_box(
+        global_lat_arr, global_lon_arr, 
+        lat_max_box, lat_min_box, lon_max_box, lon_min_box, 
+        lat_camera, lon_camera, og_h, new_h
+    )
+
+    original_lon_arr = reproj_lat_arr_dict.keys() 
+    reproj_lon_slice_arr = reproj_lon_arr_dict.values() 
+    reproj_lat_slice_arr = reproj_lat_arr_dict.values()
+
+    # define bounding box as a polygon, use for masking later
+    box_lats = np.concatenate([reproj_top_lat, reproj_right_lat, reproj_bottom_lat[::-1], reproj_left_lat[::-1]])
+    box_lons = np.concatenate([reproj_top_lon, reproj_right_lon, reproj_bottom_lon[::-1], reproj_left_lon[::-1]])
+    vertices = np.column_stack((box_lats, box_lons))
+    box_boundary_path = Path(vertices)
+
+    # find the maximum number of raw points in any slice within the bounding box 
+    raw_counts = []
+    for lat_slice, lon_slice in zip(reproj_lat_slice_arr, reproj_lon_slice_arr):
+        locs = np.column_stack((lat_slice, lon_slice))
+        mask = box_boundary_path.contains_points(locs)
+        raw_counts.append(np.sum(mask))
+    
+    num_standard_samples = int(np.max(raw_counts)) if len(raw_counts) > 0 else 100
+
+    all_resampled_lats = []
+    all_resampled_lons = []
+    all_resampled_intensities = []
+
+    num_slices = len(original_lon_arr)
+    R_peak_lat_arr = np.full(num_slices, np.nan)
+    R_lon_arr = np.full(num_slices, np.nan)
+
+    for idx, (original_lon, reproj_lat_slice, reproj_lon_slice) in enumerate(zip(original_lon_arr, reproj_lat_slice_arr, reproj_lon_slice_arr)):
+        lon_buffer = 20 + (new_h / 100000)
+        #slice_mask = np.abs(lon_proj - original_lon) <= lon_buffer 
+
+        slice_mean_lon = np.nanmean(reproj_lon_slice)
+        slice_mask = np.abs(lon_proj - slice_mean_lon) <= lon_buffer
+        
+        lon_slice_points = lon_proj[slice_mask]
+        #print(f"lon slice: {lon_slice_points}")
+        lat_slice_points = lat_proj[slice_mask]
+       # print(f"lat slice: {lat_slice_points}")
+        R_slice_values = R[slice_mask] 
+       # print(f"r slice: {R_slice_values}")
+
+        flattened_points = np.column_stack((lat_slice_points.flatten(), lon_slice_points.flatten())) 
+
+        nan_mask_R = (np.isfinite(flattened_points[:,0]) & np.isfinite(flattened_points[:,1]) & np.isfinite(R_slice_values))
+        points_R_clean = flattened_points[nan_mask_R]
+        values_R_clean = R_slice_values[nan_mask_R]
+
+        interp_locations = np.column_stack((reproj_lat_slice, reproj_lon_slice))
+
+        if len(points_R_clean) >= 3 and len(values_R_clean) >= 3:   
+            R_intensity_profile = griddata(points_R_clean, values_R_clean, interp_locations, method='linear') 
+        else:
+            R_intensity_profile = np.full(len(interp_locations), np.nan)  
+
+
+        # ====================================================================
+        # INITIAL BOUNDING BOX MASK TO FIND THE EDGES
+        # ====================================================================
+        bounding_box_mask = box_boundary_path.contains_points(interp_locations) 
+        R_nan_mask_initial = np.isfinite(R_intensity_profile)
+        reproj_lat_slice_restricted = reproj_lat_slice[bounding_box_mask & R_nan_mask_initial]
+        reproj_lon_slice_restricted = reproj_lon_slice[bounding_box_mask & R_nan_mask_initial]
+
+        # ====================================================================
+        #  BACKGROUND SUBTRACTION ON EACH LON SLICE 
+        # ====================================================================
+        box_lat_min = np.min(reproj_lat_slice_restricted) if reproj_lat_slice_restricted.size > 0 else lat_min_box
+        box_lat_max = np.max(reproj_lat_slice_restricted) if reproj_lat_slice_restricted.size > 0 else lat_max_box
+
+        lat_min_cutoff = box_lat_min - 0.2
+        lat_max_cutoff = box_lat_max + 0.2
+
+        slice_background_mask = (reproj_lat_slice < lat_min_cutoff) | (reproj_lat_slice > lat_max_cutoff)
+        
+        R_slice_bg_intensities = R_intensity_profile[slice_background_mask].copy()
+        R_slice_bg_intensities = R_slice_bg_intensities[~np.isnan(R_slice_bg_intensities)]
+
+        if len(R_slice_bg_intensities) > 0:
+            R_bg_floor = np.mean(R_slice_bg_intensities)
+            R_intensity_profile = R_intensity_profile - R_bg_floor
+            R_intensity_profile = np.where(np.isnan(R_intensity_profile), np.nan, np.maximum(R_intensity_profile, 0))
+
+        # ====================================================================
+        # EXTRACT RESTRICTED SUBSETS *AFTER* BGSUBTRACTION 
+        # ====================================================================
+        R_nan_mask_clean = np.isfinite(R_intensity_profile)
+        R_intensity_restricted = R_intensity_profile[bounding_box_mask & R_nan_mask_clean]
+        reproj_lat_slice_restricted = reproj_lat_slice[bounding_box_mask & R_nan_mask_clean]
+        reproj_lon_slice_restricted = reproj_lon_slice[bounding_box_mask & R_nan_mask_clean]
+
+        # ----- resample clean bsubbed data to find peak -----        
+        if R_intensity_restricted.size > 1:
+            standard_lat_grid = np.linspace(reproj_lat_slice_restricted.min(), 
+                                            reproj_lat_slice_restricted.max(), 
+                                            num_standard_samples)
+
+            standard_lon_grid = np.interp(standard_lat_grid, 
+                                          reproj_lat_slice_restricted, 
+                                          reproj_lon_slice_restricted)
+
+            R_intensity_resampled = np.interp(standard_lat_grid, 
+                                              reproj_lat_slice_restricted, 
+                                              R_intensity_restricted)
+
+            all_resampled_lats.extend(standard_lat_grid)
+            all_resampled_lons.extend(standard_lon_grid)
+            all_resampled_intensities.extend(R_intensity_resampled)
+            
+            idx_peak = np.argmax(R_intensity_resampled)
+            R_peak_lat_arr[idx] = standard_lat_grid[idx_peak]
+            R_lon_arr[idx] = standard_lon_grid[idx_peak]
+        else:
+            R_peak_lat_arr[idx] = np.nan
+            R_lon_arr[idx] = np.nan 
+
+    R_peak_lat_arr = np.asarray(R_peak_lat_arr)
+    R_lon_arr = np.asarray(R_lon_arr)
+
+    return R_lon_arr, R_peak_lat_arr
+
+
+
+
+
 ''' fixing to get consistent longitude array size --> pick same number of longitudes to interpolate over AND also added fixed the projecting longitudes + bounding box from 2-26
 also fixed to resample within the bounding box in order to get the same number of points per '''
 def fixed_line_interpolate(lat_proj, lon_proj, rgb, 
@@ -1696,6 +1834,8 @@ def fixed_line_interpolate(lat_proj, lon_proj, rgb,
     #print("\n\n")
     return R_lon_arr, R_peak_lat_arr
 
+ 
+
 def new_compute_metrics_for_altitude(
     og_h, new_h,
     t_arr,
@@ -1704,6 +1844,7 @@ def new_compute_metrics_for_altitude(
     yknf_rgb_asi_ds, fsmi_rgb_asi_ds,
     global_lon_arr, global_lat_arr# so same number of longitude slices for all the different projected altitudes
 ):
+    ''' ADDED BACKGROUND SUBTRACTION '''
     # ---- project ONCE per altitude ----
     yknf_lat_proj, yknf_lon_proj = new_spherical_project_lat_lon(
         full_azimuth_yknf, full_elevation_yknf,
@@ -1767,7 +1908,7 @@ def new_compute_metrics_for_altitude(
         
 
         # ---- interpolate (only need peak arrays) ----
-        _, yknf_peak = fixed_line_interpolate(
+        _, yknf_peak = fixed_line_interp_bsub( ## CHANGED FOR BSUB
             yknf_lat_proj, yknf_lon_proj, yknf_rgb,
              lat_min_box, lat_max_box, 
              lon_min_box, lon_max_box,
@@ -1778,7 +1919,7 @@ def new_compute_metrics_for_altitude(
         )
 
 
-        _, fsmi_peak = fixed_line_interpolate(
+        _, fsmi_peak = fixed_line_interp_bsub( ## CHANGED FOR BSUB
              fsmi_lat_proj, fsmi_lon_proj, fsmi_rgb, 
              lat_min_box, lat_max_box, 
              lon_min_box, lon_max_box,
