@@ -103,7 +103,8 @@ def planar_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, h, skymap_110
     return lat_aurora_arr, lon_aurora_arr
 
 
-
+## OLD ##
+# same as new_spherical project_lat_lon, except this one uses stronger elevation mask (new has el>rad(0.1) and el<rad(90) --> stick with the softer bounds new_spherical_project_lat_lon
 def spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, h):
     '''
     params: 
@@ -997,9 +998,71 @@ def mod_line_interpolate(lat_proj, lon_proj, rgb,
            R_lon_arr, R_peak_lat_arr)
 
 
+# TESTING MORE GEOMETRICALLY ACCURATE REVERSAL, MATCHES THE SPHERICAL_PROJECT_LAT_LON 
+def reverse_project_lat_lon(lat_aurora, lon_aurora, lat_camera, lon_camera, new_h):
+    '''
+    params:
+    lat_aurora = target/aurora latitude (degrees)
+    lon_aurora = target/aurora longitude (degrees)
+    lat_camera = camera latitude (degrees)
+    lon_camera = camera longitude (degrees)
+    new_h = emission height in meters (e.g. 110000 for 110 km)
+
+    returns:
+    az_arr = calculated azimuth angles from camera to target (degrees, 0-360)
+    el_arr = calculated elevation angles from camera to target (degrees, -90 to +90)
+    '''
+    R = 6371000.0  # Earth radius in meters
+
+    # Convert inputs to radians
+    lat_cam_rad = np.radians(lat_camera)
+    lon_cam_rad = np.radians(lon_camera)
+    lat_aur_rad = np.radians(np.array(lat_aurora))
+    lon_aur_rad = np.radians(np.array(lon_aurora))
+
+    dlon = lon_aur_rad - lon_cam_rad
+
+    # 1. Calculate central angle phi (angular distance along Earth's surface)
+    # Using Spherical Law of Cosines:
+    cos_phi = (np.sin(lat_cam_rad) * np.sin(lat_aur_rad) +
+               np.cos(lat_cam_rad) * np.cos(lat_aur_rad) * np.cos(dlon))
+    phi = np.arccos(np.clip(cos_phi, -1.0, 1.0))  # central angle in radians
+
+    # 2. Calculate Azimuth (initial bearing from camera to target)
+    y = np.sin(dlon) * np.cos(lat_aur_rad)
+    x = (np.cos(lat_cam_rad) * np.sin(lat_aur_rad) -
+         np.sin(lat_cam_rad) * np.cos(lat_aur_rad) * np.cos(dlon))
+    
+    az_rad = np.arctan2(y, x)
+    # Convert azimuth to [0, 360) degrees range
+    az_deg = (np.degrees(az_rad) + 360.0) % 360.0
+
+    # 3. Calculate Slant Range (t) using Law of Cosines on Earth-center triangle
+    # t^2 = R^2 + (R+h)^2 - 2*R*(R+h)*cos(phi)
+    r_target = R + new_h
+    t_sq = (R**2) + (r_target**2) - (2.0 * R * r_target * np.cos(phi))
+    t = np.sqrt(np.maximum(t_sq, 0.0))
+
+    # 4. Calculate Elevation Angle
+    # Using Law of Sines / Cosines on Earth-Center triangle:
+    # cos(el) = (R + h) * sin(phi) / t
+    cos_el = (r_target * np.sin(phi)) / np.where(t == 0, 1e-9, t)
+    
+    # Alternatively, using spatial vectors directly to get elevation safely:
+    # el = arctan2( (R+h)*cos(phi) - R, (R+h)*sin(phi) )
+    el_rad = np.arctan2(r_target * np.cos(phi) - R, r_target * np.sin(phi))
+
+    el_deg = np.degrees(el_rad)
+
+    # Mask points below horizontal or invalid computations
+    invalid_mask = np.isnan(lat_aur_rad) | np.isnan(lon_aur_rad)
+    az_deg[invalid_mask] = np.nan
+    el_deg[invalid_mask] = np.nan
+
+    return az_deg, el_deg
 
 
-def reverse_project_lat_lon(lat_target_arr, lon_target_arr, lat_camera, lon_camera, og_h):
+def old_reverse_project_lat_lon(lat_target_arr, lon_target_arr, lat_camera, lon_camera, og_h):
     """
         Goal: given lat_target array, lon_target array, find the azimuth and elevation corresponding to them
 
@@ -1200,7 +1263,50 @@ def plot_lat_slice_bounding_box(lat_proj, lon_proj,
     plt.show()
 
 
+#updated for more geometric accuracy!! --> TESTING RN change name later
 def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h):
+    R = 6371000.0  # Earth radius in meters
+
+    el_rad = np.radians(np.array(el_arr))
+    az_rad = np.radians(np.array(az_arr))
+
+    # Mask invalid elevation angles
+    valid_mask = (el_rad > np.radians(0.1)) & (el_rad < np.radians(90.0))
+    el_rad[~valid_mask] = np.nan
+
+    # 1. Slant distance t to the altitude shell (new_h)
+    # Using the Law of Cosines on the Earth-Center / Camera / Aurora triangle:
+    sin_el = np.sin(el_rad)
+    t_aurora = -R * sin_el + np.sqrt((R * sin_el)**2 + 2 * R * new_h + new_h**2)
+
+    # 2. Central angle phi (angular distance along Earth's surface in radians)
+    # Using Law of Sines: sin(phi) / t_aurora = sin(el + pi/2) / (R + new_h)
+    sin_phi = (t_aurora * np.cos(el_rad)) / (R + new_h)
+    phi = np.arcsin(np.clip(sin_phi, -1.0, 1.0))  # Central angle in radians
+
+    # 3. Spherical Forward Kinematics (Great Circle Projection)
+    lat_cam_rad = np.radians(lat_camera)
+    lon_cam_rad = np.radians(lon_camera)
+
+    # Target Latitude
+    sin_lat = np.sin(lat_cam_rad) * np.cos(phi) + \
+              np.cos(lat_cam_rad) * np.sin(phi) * np.cos(az_rad)
+    lat_aurora_rad = np.arcsin(np.clip(sin_lat, -1.0, 1.0))
+
+    # Target Longitude
+    dlon = np.arctan2(
+        np.sin(az_rad) * np.sin(phi) * np.cos(lat_cam_rad),
+        np.cos(phi) - np.sin(lat_cam_rad) * np.sin(lat_aurora_rad)
+    )
+    lon_aurora_rad = lon_cam_rad + dlon
+
+    return np.degrees(lat_aurora_rad), np.degrees(lon_aurora_rad)
+
+    
+
+## CURRR
+# same as spherical project_lat_lon, except this one uses softer elevation mask (new has el>rad(5) and el<rad(90) --> stick with the softer bounds new_spherical_project_lat_lon
+def newer_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h):
     '''
     params: 
     az_arr = 2D azimuth array for each pixel (NaNs ok, degrees, xarray)
@@ -1254,12 +1360,6 @@ def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h)
     # add lat/long offset to camera's og lat/lon to get the lat/lon of the aurora at the chosen height!
     lat_aurora_arr = lat_camera + lat_delta_arr
     lon_aurora_arr = lon_camera + lon_delta_arr
-
-    # apply the same mask again just in case --> removed for now for testing
-    #mask_restricted = skymap_110_mask[1:, 1:]
-    #lat_aurora_arr[skymap_110_mask] = np.nan
-    #lon_aurora_arr[skymap_110_mask] = np.nan
-
     # print(f"DEBUG: Mean Lat is {np.nanmean(lat_aurora_arr)}") # should be ~60-70
     # print(f"DEBUG: Mean Lon is {np.nanmean(lon_aurora_arr)}") # should be ~220-250
 
@@ -1281,7 +1381,7 @@ def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
 
           ** these are all in degrees **
           lat_slice_target_arr = all the different latitudes for which to look at for each longitude slice (so constant)
-          lon_slice_target_arr = array of all the different lontiudes to slice the aurora at
+          lon_slice_target_arr = array of all the different lontiudes to slice the aurora at (only slicing at 1 longitude for now, so this is a 1 element array) 
           single_lon_target_arr = taking one of the longitudes from lon_slice_target_arr and making an array same size as lat_slice_target_arr of all the same lon value
           
 
@@ -1303,7 +1403,7 @@ def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
     reproj_lat_arr_dict = {}
     reproj_lon_arr_dict = {}
     for lon_slice_target in lon_slice_target_arr:
-        print(f"lon_slice_target: {lon_slice_target}")
+        #print(f"lon_slice_target: {lon_slice_target}")
         single_lon_target_arr = np.full(shape=len(lat_slice_target_arr), fill_value=lon_slice_target) # fill longitude array with constants 
         reproj_az_arr, reproj_el_arr = reverse_project_lat_lon(lat_slice_target_arr, single_lon_target_arr, lat_camera, lon_camera, og_h)
         reproj_lat_arr, reproj_lon_arr = new_spherical_project_lat_lon(reproj_az_arr, reproj_el_arr, lat_camera, lon_camera, new_h)
@@ -1350,6 +1450,7 @@ def project_lon_slices_and_box(lat_slice_target_arr, lon_slice_target_arr,
 
 
 
+# this is more for the 10 UT event with the picket fences where we want to look at both longitude sectors and latitude sectors 
 def project_lat_slices_and_box(lat_slice_target_arr, lon_slice_target_arr, 
                                lat_box_max, lat_box_min, lon_box_max, lon_box_min,
                                lat_camera, lon_camera, og_h, new_h):
