@@ -999,6 +999,7 @@ def mod_line_interpolate(lat_proj, lon_proj, rgb,
 
 
 # TESTING MORE GEOMETRICALLY ACCURATE REVERSAL, MATCHES THE SPHERICAL_PROJECT_LAT_LON 
+## Uses exact spherical formula (great circle bearing, central angle) 
 def reverse_project_lat_lon(lat_aurora, lon_aurora, lat_camera, lon_camera, new_h):
     '''
     params:
@@ -1263,6 +1264,7 @@ def plot_lat_slice_bounding_box(lat_proj, lon_proj,
     plt.show()
 
 
+## DEFINITIVE PROJECTION FUNCTION (not using spherical_project_lat_lon) --> updated version
 #updated for more geometric accuracy!! --> TESTING RN change name later
 def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h):
     R = 6371000.0  # Earth radius in meters
@@ -1271,7 +1273,7 @@ def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h)
     az_rad = np.radians(np.array(az_arr))
 
     # Mask invalid elevation angles
-    valid_mask = (el_rad > np.radians(0.1)) & (el_rad < np.radians(90.0))
+    valid_mask = (el_rad > np.radians(1)) & (el_rad < np.radians(90.0)) # changed to a stricter elevation cutoff 
     el_rad[~valid_mask] = np.nan
 
     # 1. Slant distance t to the altitude shell (new_h)
@@ -1282,7 +1284,7 @@ def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h)
     # 2. Central angle phi (angular distance along Earth's surface in radians)
     # Using Law of Sines: sin(phi) / t_aurora = sin(el + pi/2) / (R + new_h)
     sin_phi = (t_aurora * np.cos(el_rad)) / (R + new_h)
-    phi = np.arcsin(np.clip(sin_phi, -1.0, 1.0))  # Central angle in radians
+    phi = np.arcsin(np.clip(sin_phi, -1.0, 1.0))  # Central angle in radians --> changed from arcsin to arctan to help if phi approaches 90 --> then changed back 
 
     # 3. Spherical Forward Kinematics (Great Circle Projection)
     lat_cam_rad = np.radians(lat_camera)
@@ -1302,9 +1304,8 @@ def new_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h)
 
     return np.degrees(lat_aurora_rad), np.degrees(lon_aurora_rad)
 
-    
 
-## CURRR
+## NOT USING THIS, SAME AS NEW_SPHERICAL_PROJECT_LAT_LON
 # same as spherical project_lat_lon, except this one uses softer elevation mask (new has el>rad(5) and el<rad(90) --> stick with the softer bounds new_spherical_project_lat_lon
 def newer_spherical_project_lat_lon(az_arr, el_arr, lat_camera, lon_camera, new_h):
     '''
